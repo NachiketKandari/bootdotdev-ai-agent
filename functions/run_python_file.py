@@ -24,7 +24,6 @@ def run_python_file(working_directory, file_path, args=None):
             cwd=abs_working_dir,
         )
         output = []
-        print(result)
         if result.stdout:
             output.append(f"STDOUT:\n{result.stdout}")
         if result.stderr:

@@ -21,10 +21,7 @@ def main():
     if args.prompt.isspace() or len(args.prompt) == 0:
         raise SystemExit(1)
 
-    messages = [
-    types.Content(role="user", parts=[types.Part(text=args.prompt)]),
-    ]
-
+    messages = []
     available_functions = types.Tool(
     function_declarations=[
         schema_get_files_info,
@@ -34,33 +31,41 @@ def main():
     ]
     )
 
-    response = client.models.generate_content(
-        model="gemini-flash-lite-latest",
-        contents=messages,
-        config=types.GenerateContentConfig(
-    tools=[available_functions], system_instruction=SYSTEM_PROMPT
-    )
-    )
-    if args.verbose:
-        print(f"User prompt: {args.prompt}\nPrompt tokens: {response.usage_metadata.prompt_token_count} \nResponse tokens: {response.usage_metadata.candidates_token_count}")
-    function_calls = response.function_calls
-    if not function_calls:
-        return response.text
-    
-    function_responses = []
-    for function_call_part in function_calls:
-        function_call_result = call_function(function_call_part, args.verbose)
-        if (
-            not function_call_result.parts
-            or not function_call_result.parts[0].function_response
-        ):
-            raise Exception("empty function call result")
+    messages.append(f"User: {args.prompt}")
+    while len(messages) <= 40:
+        response = client.models.generate_content(
+            model="gemini-flash-lite-latest",
+            contents=messages,
+            config=types.GenerateContentConfig(
+                tools=[available_functions], system_instruction=SYSTEM_PROMPT
+            )
+        )
+        
         if args.verbose:
-            print(f"-> {function_call_result.parts[0].function_response.response}")
-        function_responses.append(function_call_result.parts[0])
+            print(f"User prompt: {args.prompt}\nPrompt tokens: {response.usage_metadata.prompt_token_count}     \nResponse tokens: {response.usage_metadata.candidates_token_count}")
+    
+        function_calls = response.function_calls
+        
+        if not function_calls:
+            return response.text
+    
+        function_responses = []
+        for function_call_part in function_calls:
+            role = response.candidates[0].content.role
+            messages.append(f'{role} : Calling {function_call_part}')
+            function_call_result = call_function(function_call_part, args.verbose)
+            if (
+                not function_call_result.parts
+                or not function_call_result.parts[0].function_response
+            ):
+                raise Exception("empty function call result")
+            if args.verbose:  
+                print(f"\n\n\n-> {function_call_result.parts[0].function_response.response}")
+            messages.append(f'{function_call_result.role}: {function_call_result.parts[0].function_response.response}')
+            function_responses.append(function_call_result.parts[0])
 
-    if not function_responses:
-        raise Exception("no function responses generated, exiting.")
+        if not function_responses:
+            raise Exception("no function responses generated, exiting.")
 
 if __name__ == "__main__":
     main()
